@@ -1,0 +1,8 @@
+# 검증된 upstream 버전입니다. 변동하는 main branch로 바꾸지 마세요.
+CYCLO_REPOSITORY=https://github.com/ROBOTIS-GIT/cyclo_intelligence.git
+CYCLO_COMMIT=8065dfc1764c0279e314493136979b99c246de9b
+OPEN_MANIPULATOR_REPOSITORY=https://github.com/ROBOTIS-GIT/open_manipulator.git
+OPEN_MANIPULATOR_COMMIT=26807fca45c472c315ad163b732aa6cc391ec999
+ROS_DISTRO=jazzy
+ROS_DOMAIN_ID=30
+RMW_IMPLEMENTATION=rmw_zenoh_cpp

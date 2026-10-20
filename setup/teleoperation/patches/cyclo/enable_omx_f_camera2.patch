@@ -1,0 +1,17 @@
+diff --git a/shared/shared/robot_configs/omx_f_config.yaml b/shared/shared/robot_configs/omx_f_config.yaml
+index ff4e27d..adc8fe5 100644
+--- a/shared/shared/robot_configs/omx_f_config.yaml
++++ b/shared/shared/robot_configs/omx_f_config.yaml
+@@ -18,9 +18,9 @@ orchestrator:
+           camera1:
+             topic: /camera1/image_raw/compressed
+             msg_type: sensor_msgs/msg/CompressedImage
+-          # camera2:
+-          #   topic: /camera2/image_raw/compressed
+-          #   msg_type: sensor_msgs/msg/CompressedImage
++          camera2:
++            topic: /camera2/image_raw/compressed
++            msg_type: sensor_msgs/msg/CompressedImage
+ 
+         state:
+           arm:

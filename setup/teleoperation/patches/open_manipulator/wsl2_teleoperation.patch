@@ -1,0 +1,169 @@
+diff --git a/open_manipulator_bringup/config/omx_f_follower_ai/hardware_controller_manager.yaml b/open_manipulator_bringup/config/omx_f_follower_ai/hardware_controller_manager.yaml
+index 7259ef7..42c9494 100644
+--- a/open_manipulator_bringup/config/omx_f_follower_ai/hardware_controller_manager.yaml
++++ b/open_manipulator_bringup/config/omx_f_follower_ai/hardware_controller_manager.yaml
+@@ -1,7 +1,7 @@
+ /**:
+   controller_manager:
+     ros__parameters:
+-      update_rate: 100  # Hz
++      update_rate: 30  # Hz; improve WSL2 USB/IP stability
+ 
+       joint_state_broadcaster:
+         type: joint_state_broadcaster/JointStateBroadcaster
+diff --git a/open_manipulator_bringup/config/omx_l_leader_ai/hardware_controller_manager.yaml b/open_manipulator_bringup/config/omx_l_leader_ai/hardware_controller_manager.yaml
+index dfea6ca..98da67e 100644
+--- a/open_manipulator_bringup/config/omx_l_leader_ai/hardware_controller_manager.yaml
++++ b/open_manipulator_bringup/config/omx_l_leader_ai/hardware_controller_manager.yaml
+@@ -1,7 +1,7 @@
+ /**:
+   controller_manager:
+     ros__parameters:
+-      update_rate: 100  # Hz
++      update_rate: 30  # Hz; improve WSL2 USB/IP stability
+ 
+       joint_state_broadcaster:
+         type: joint_state_broadcaster/JointStateBroadcaster
+diff --git a/open_manipulator_bringup/launch/omx_ai.launch.py b/open_manipulator_bringup/launch/omx_ai.launch.py
+index 6106d89..dcda65c 100644
+--- a/open_manipulator_bringup/launch/omx_ai.launch.py
++++ b/open_manipulator_bringup/launch/omx_ai.launch.py
+@@ -19,11 +19,13 @@
+ """Launch file for AI teleoperation of OMX L for leader, OMX F for follower."""
+ 
+ from launch import LaunchDescription
++from launch.actions import DeclareLaunchArgument
+ from launch.actions import ExecuteProcess
+ from launch.actions import LogInfo
+ from launch.actions import RegisterEventHandler
+ from launch.event_handlers import OnProcessExit
+ from launch.event_handlers import OnProcessStart
++from launch.substitutions import LaunchConfiguration
+ from launch.substitutions import PathJoinSubstitution
+ from launch_ros.actions import Node
+ from launch_ros.substitutions import FindPackageShare
+@@ -31,6 +33,9 @@ from launch_ros.substitutions import FindPackageShare
+ 
+ def generate_launch_description():
+     """Generate launch description for AI teleoperation."""
++    follower_port_name = LaunchConfiguration('follower_port_name')
++    leader_port_name = LaunchConfiguration('leader_port_name')
++
+     # Step 1: Start follower launch file
+     start_follower = ExecuteProcess(
+         cmd=[
+@@ -38,6 +43,7 @@ def generate_launch_description():
+             'launch',
+             'open_manipulator_bringup',
+             'omx_f_follower_ai.launch.py',
++            ['port_name:=', follower_port_name],
+         ],
+         output='screen',
+     )
+@@ -64,12 +70,23 @@ def generate_launch_description():
+             'launch',
+             'open_manipulator_bringup',
+             'omx_l_leader_ai.launch.py',
++            ['port_name:=', leader_port_name],
+         ],
+         output='screen',
+         shell=True,
+     )
+ 
+     return LaunchDescription([
++        DeclareLaunchArgument(
++            'follower_port_name',
++            default_value='/dev/ttyACM0',
++            description='Port name for the OMX F follower hardware interface.',
++        ),
++        DeclareLaunchArgument(
++            'leader_port_name',
++            default_value='/dev/ttyACM1',
++            description='Port name for the OMX L leader hardware interface.',
++        ),
+         LogInfo(msg='Starting omx_f_follower_ai.launch.py...'),
+         start_follower,
+         # Step 2: Ensure joint_trajectory_executor starts after start_follower
+diff --git a/open_manipulator_bringup/open_manipulator_bringup/joint_trajectory_executor.py b/open_manipulator_bringup/open_manipulator_bringup/joint_trajectory_executor.py
+index 9fee450..4fc189c 100755
+--- a/open_manipulator_bringup/open_manipulator_bringup/joint_trajectory_executor.py
++++ b/open_manipulator_bringup/open_manipulator_bringup/joint_trajectory_executor.py
+@@ -20,6 +20,7 @@ import math
+ import sys
+ 
+ from control_msgs.action import FollowJointTrajectory
++from action_msgs.msg import GoalStatus
+ import numpy as np
+ import rclpy
+ from rclpy.action import ActionClient
+@@ -101,6 +102,7 @@ class JointTrajectoryExecutor(Node):
+         self.reached_target = False
+         self.num_points = 100  # Number of points for smooth trajectory
+         self.goal_handle = None
++        self.goal_request_pending = False
+         self.last_status_time = 0.0
+         self.status_interval = 1.0  # Log status every second
+         self.current_step = 0
+@@ -126,6 +128,7 @@ class JointTrajectoryExecutor(Node):
+         self.get_logger().debug(f'Feedback: {feedback.actual.positions}')
+ 
+     def goal_response_callback(self, future):
++        self.goal_request_pending = False
+         goal_handle = future.result()
+         if not goal_handle.accepted:
+             self.get_logger().info('Goal rejected :(')
+@@ -133,6 +136,21 @@ class JointTrajectoryExecutor(Node):
+ 
+         self.get_logger().info('Goal accepted :)')
+         self.goal_handle = goal_handle
++        result_future = goal_handle.get_result_async()
++        result_future.add_done_callback(self.goal_result_callback)
++
++    def goal_result_callback(self, future):
++        result = future.result()
++        if result.status != GoalStatus.STATUS_SUCCEEDED:
++            self.get_logger().error(
++                f'Trajectory step {self.current_step} failed with status '
++                f'{result.status}; initialization is paused'
++            )
++            return
++
++        self.get_logger().info(f'🎯 Step {self.current_step} completed!')
++        self.current_step += 1
++        self.goal_handle = None
+ 
+     def joint_state_callback(self, msg):
+         if set(self.joint_names).issubset(set(msg.name)):
+@@ -144,7 +162,7 @@ class JointTrajectoryExecutor(Node):
+             ]
+ 
+             # Check if current step has reached its target
+-            if self.goal_handle is None:
++            if self.goal_handle is None and not self.goal_request_pending:
+                 if self.current_step < len(self.positions_list):
+                     target_positions = self.get_step_target_positions()
+                     self.get_logger().info(
+@@ -162,6 +180,7 @@ class JointTrajectoryExecutor(Node):
+                     goal_msg.goal_time_tolerance.nanosec = 0
+ 
+                     self.get_logger().info('Sending goal...')
++                    self.goal_request_pending = True
+                     self._send_goal_future = self.action_client.send_goal_async(
+                         goal_msg, feedback_callback=self.feedback_callback
+                     )
+@@ -173,15 +192,6 @@ class JointTrajectoryExecutor(Node):
+                     self.shutdown_node()
+                     return
+ 
+-            # Check if current step has reached its target
+-            if self.check_step_completion():
+-                if not self.reached_target:
+-                    self.reached_target = True
+-                    self.get_logger().info(f'🎯 Step {self.current_step} completed!')
+-                    self.goal_handle = None
+-                    self.current_step += 1
+-                    self.reached_target = False
+-
+     def shutdown_node(self):
+         if self.goal_handle:
+             self.goal_handle.cancel_goal_async()

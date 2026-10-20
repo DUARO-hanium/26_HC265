@@ -1,0 +1,31 @@
+entrance_top_uv_to_point:
+  ros__parameters:
+    plane_name: worktop
+    target_frame: link0
+    camera_info_topic: /camera1/camera_info
+    uv_topic: /package/entrance_top_uv
+    output_topic: /package/entrance_top_point
+    uv_is_rectified: true
+    uv_qos_reliability: best_effort
+    # Runtime refuses packaged examples. Set true only in a measured bundle.
+    calibration_valid: false
+    # PLACEHOLDER: replace with the measured worktop plane in link0.
+    plane_normal: [0.0, 0.0, 1.0]
+    plane_offset: 0.0
+    minimum_incidence: 0.05
+
+bottom_contact_uv_to_point:
+  ros__parameters:
+    plane_name: floor
+    target_frame: link0
+    camera_info_topic: /camera1/camera_info
+    uv_topic: /package/bottom_contact_uv
+    output_topic: /package/bottom_contact_point
+    uv_is_rectified: true
+    uv_qos_reliability: best_effort
+    # Runtime refuses packaged examples. Set true only in a measured bundle.
+    calibration_valid: false
+    # PLACEHOLDER example only: z=-0.35 m gives offset +0.35.
+    plane_normal: [0.0, 0.0, 1.0]
+    plane_offset: 0.35
+    minimum_incidence: 0.05

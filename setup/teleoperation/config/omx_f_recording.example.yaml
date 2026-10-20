@@ -1,0 +1,13 @@
+# upstream OMX-F 녹화 profile에 적용할 예제입니다.
+# 공개용 예제이므로 현장 식별자는 포함하지 않습니다.
+cameras:
+  camera1:
+    topic: /camera1/image_raw/compressed
+    msg_type: sensor_msgs/msg/CompressedImage
+  camera2:
+    topic: /camera2/image_raw/compressed
+    msg_type: sensor_msgs/msg/CompressedImage
+robot_topics:
+  state: /joint_states
+  command: /leader/joint_trajectory
+  transforms: /tf
