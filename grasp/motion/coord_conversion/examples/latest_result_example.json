@@ -1,0 +1,1 @@
+{"state": "GRASP_READY", "targets": [{"name": "shoulder", "arm": "left", "grasp_u": 600, "grasp_v": 380, "grasp_found": true}, {"name": "shoulder", "arm": "right", "grasp_u": 620, "grasp_v": 400, "grasp_found": true}]}
