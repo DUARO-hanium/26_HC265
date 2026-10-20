@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# 환경 / 비밀
+.env
+.env.local
+*.env
+!*.env.example
+*/profile.env
+config/devices.local.yaml
+
+# 데이터 / 모델 / 결과물 (용량, 비공개)
+data/
+datasets/
+outputs/
+checkpoints/
+weights/
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+*.onnx
+*.mcap
+*.mp4
+*.avi
+media/
+ui/videos/
+rdk/config/
+rdk/poses.csv
+
+# ROS / 빌드
+build/
+install/
+log/
+managed_components/
+sdkconfig.old
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
