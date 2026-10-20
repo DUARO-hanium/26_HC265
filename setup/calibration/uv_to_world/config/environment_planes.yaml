@@ -1,0 +1,32 @@
+entrance_top_uv_to_point:
+  ros__parameters:
+    plane_name: worktop
+    target_frame: link0
+    camera_info_topic: /camera1/camera_info
+    uv_topic: /package/entrance_top_uv
+    output_topic: /package/entrance_top_point
+    # The detector must consume /camera1/image_rect when this is true.
+    uv_is_rectified: true
+    uv_qos_reliability: best_effort
+    calibration_valid: false
+    # Replace with the measured worktop plane in target_frame.
+    plane_normal: [0.0, 0.0, 1.0]
+    plane_offset: 0.0
+    minimum_incidence: 0.05
+
+bottom_contact_uv_to_point:
+  ros__parameters:
+    plane_name: floor
+    target_frame: link0
+    camera_info_topic: /camera1/camera_info
+    uv_topic: /package/bottom_contact_uv
+    output_topic: /package/bottom_contact_point
+    # The detector must consume /camera1/image_rect when this is true.
+    uv_is_rectified: true
+    uv_qos_reliability: best_effort
+    calibration_valid: false
+    # Example only: if base origin is on the worktop and floor is z=-0.35 m.
+    # Replace this with the measured floor plane in target_frame.
+    plane_normal: [0.0, 0.0, 1.0]
+    plane_offset: 0.35
+    minimum_incidence: 0.05

@@ -1,0 +1,18 @@
+# 텍스트 파일은 LF (WSL 실행 호환)
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.ps1 text eol=crlf
+
+# 3D 모델 / 바이너리
+*.stl binary
+*.STL binary
+*.step binary
+*.stp binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.mp4 binary
+*.patch -text

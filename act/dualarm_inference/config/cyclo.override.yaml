@@ -1,0 +1,51 @@
+services:
+  cyclo_intelligence:
+    container_name: omx_ai_bimanual_cyclo
+    image: omx-ai-bimanual/cyclo-intelligence:1.4.0-cpu
+    build:
+      dockerfile: docker/Dockerfile.cpu.local
+      network: default
+    runtime: runc
+    deploy:
+      resources:
+        reservations:
+          devices: !reset []
+    environment:
+      OMX_WS: ${OMX_WS}
+      ARCH: amd64
+      COMPOSE_PROJECT_NAME: omx_ai_bimanual_cyclo
+      CYCLO_LEROBOT_CONTAINER: omx_ai_act
+      CYCLO_LEROBOT_IMAGE: omx-ai-bimanual/act:1.4.1-cpu
+      CYCLO_SUPERVISOR_API_CONTAINER_NAME: omx_ai_bimanual_cyclo
+      PYTHONPATH: /opt/venv/lib/python3.12/site-packages:/opt/cyclo_manager:/usr/local/lib
+      ROS_DOMAIN_ID: '74'
+      RMW_IMPLEMENTATION: rmw_zenoh_cpp
+      ZENOH_CONFIG_OVERRIDE: 'mode="client";connect/endpoints=["tcp/127.0.0.1:7449"];scouting/multicast/enabled=false;transport/shared_memory/enabled=true'
+    volumes:
+      - ${OMX_WS}:/omx_ws
+      - ${OMX_WS}/runtime/cyclo-agent:/var/run/agent
+      - ${OMX_WS}/scripts/ros2_service_run.sh:/usr/local/lib/s6-services/ros2_service_run.sh:ro
+      - ${OMX_WS}/config/cyclo.override.yaml:/root/ros2_ws/src/cyclo_intelligence/docker/docker-compose.override.yml:ro
+      - ${OMX_WS}/checkpoints:/workspace/model/lerobot
+      - ${OMX_WS}/cyclo_intelligence/shared/shared/robot_configs:/root/ros2_ws/install/shared/share/shared/robot_configs:ro
+  lerobot:
+    container_name: omx_ai_act
+    image: omx-ai-bimanual/act:1.4.1-cpu
+    build:
+      context: ${OMX_WS}
+      dockerfile: config/Dockerfile.act-cpu
+      network: default
+    runtime: runc
+    deploy:
+      resources:
+        reservations:
+          devices: !reset []
+    environment:
+      ROS_DOMAIN_ID: '74'
+      RMW_IMPLEMENTATION: rmw_zenoh_cpp
+      ZENOH_ROUTER_PORT: '7449'
+      ZENOH_CONFIG_OVERRIDE: 'mode="client";connect/endpoints=["tcp/127.0.0.1:7449"];scouting/multicast/enabled=false;transport/shared_memory/enabled=true'
+      POLICY_BACKEND: lerobot
+    volumes:
+      - ${OMX_WS}:/omx_ws
+      - ${OMX_WS}/checkpoints:/workspace/model/lerobot

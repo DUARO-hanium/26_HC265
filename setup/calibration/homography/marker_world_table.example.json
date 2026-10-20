@@ -1,0 +1,7 @@
+{
+  "_comment": "마커 ID → 로봇 베이스 기준 world (x, y), 단위 m. 이 파일을 marker_world_table.json 으로 복사한 뒤 null 자리에 '실측값'을 넣을 것. null 상태로 실행하면 스크립트가 에러로 중단됨. 마커 4개는 일직선이 되지 않게 배치.",
+  "0": [null, null],
+  "1": [null, null],
+  "2": [null, null],
+  "3": [null, null]
+}

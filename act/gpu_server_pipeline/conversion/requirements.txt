@@ -1,0 +1,12 @@
+# Official dataset and ACT APIs used by this project.
+lerobot[dataset]==0.6.0
+
+# Source decoding, tabular timestamps, and portable validation.
+mcap-ros2-support==0.5.7
+opencv-python-headless==4.13.0.92
+pandas==2.3.3
+pyarrow==25.0.0
+numpy==2.2.6
+Pillow==12.3.0
+torchcodec==0.11.1
+pytest>=8,<10

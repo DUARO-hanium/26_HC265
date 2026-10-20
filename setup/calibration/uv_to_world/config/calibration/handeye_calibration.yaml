@@ -1,0 +1,25 @@
+handeye_calibrator:
+  ros__parameters:
+    image_topic: /camera1/image_raw
+    camera_info_topic: /camera1/camera_info
+    debug_image_topic: /camera1/handeye/debug_image
+    base_frame: link0
+    tool_frame: end_effector_link
+    camera_frame: camera1_optical_frame
+    squares_x: 7
+    squares_y: 5
+    square_length: 0.024
+    marker_length: 0.01728
+    dictionary: DICT_5X5_100
+    minimum_corners: 8
+    minimum_samples: 15
+    max_reprojection_error_px: 1.0
+    minimum_translation_change_m: 0.015
+    minimum_rotation_change_deg: 8.0
+    max_sample_age_sec: 1.0
+    tf_lookup_timeout_sec: 0.2
+    # Latest-TF fallback is valid only after the arm has completely stopped.
+    max_tf_image_skew_sec: 0.1
+    max_translation_rms_m: 0.005
+    max_rotation_rms_deg: 1.0
+    output_file: ~/.ros/uv_to_world/eye_to_hand.yaml

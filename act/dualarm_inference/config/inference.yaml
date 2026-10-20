@@ -1,0 +1,18 @@
+# Camera names, joint units and processor statistics must match collection/training.
+left_checkpoint: /workspace/model/lerobot/left/pretrained_model
+right_checkpoint: /workspace/model/lerobot/right/pretrained_model
+success_checkpoint: /workspace/model/lerobot/left_open_success/pretrained_model
+device: cpu
+fps: 30
+torch_threads: 4
+max_sensor_age_s: 0.5
+# Abort before publishing an unexpectedly large step; do not silently rescale actions.
+max_target_error_rad: 0.35
+max_command_step_rad: 0.20
+stage_timeout_s: 120
+automatic:
+  probability: 0.95
+  dwell_s: 1.5
+  min_left_s: 3.0
+  check_hz: 4
+  max_joint_velocity_rad_s: 0.08

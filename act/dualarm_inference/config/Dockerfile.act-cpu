@@ -1,0 +1,21 @@
+# Reuse the installed CPU ROS image; keep LeRobot's NumPy 2 isolated from cv_bridge.
+FROM omx-ai-bimanual/cyclo-intelligence:1.4.0-cpu
+ENV VIRTUAL_ENV=/lerobot/.venv
+ENV PATH=/lerobot/.venv/bin:$PATH
+RUN python3 -m venv --system-site-packages /lerobot/.venv && \
+    echo /opt/venv/lib/python3.12/site-packages > /lerobot/.venv/lib/python3.12/site-packages/cpu-torch.pth
+COPY cyclo_intelligence/cyclo_brain/policy/lerobot/lerobot /lerobot/source
+RUN python -m pip install --no-cache-dir '/lerobot/source[dataset,transformers-dep]' \
+    'torch==2.7.0+cpu' 'torchvision==0.22.0+cpu' 'torchcodec==0.3.0' \
+    'eclipse-zenoh>=1.6,<1.7' 'rosbags>=0.11' GitPython json5 && \
+    rm -rf /etc/s6-overlay/s6-rc.d/user/contents.d/* && : > /root/.bashrc
+COPY cyclo_intelligence/cyclo_brain/policy/common/s6-services/ /etc/s6-overlay/s6-rc.d/
+ENV HF_HOME=/root/.cache/huggingface HF_LEROBOT_HOME=/root/.cache/huggingface/lerobot
+ENV ZENOH_SDK_PATH=/zenoh_sdk ROBOT_CLIENT_SDK_PATH=/robot_client_sdk
+ENV ACTION_CHUNK_PROCESSING_SDK_PATH=/action_chunk_processing_sdk ORCHESTRATOR_CONFIG_PATH=/orchestrator_config
+ENV POLICY_BACKEND=lerobot POLICY_ENGINE_MODULE=lerobot_engine
+ENV PYTHONPATH=/app:/policy_runtime:/zenoh_sdk:/robot_client_sdk:/action_chunk_processing_sdk
+WORKDIR /lerobot
+# colcon in the ROS base and LeRobot share a compatible setuptools range.
+RUN python -m pip install --no-cache-dir 'setuptools>=71,<80' 'accelerate>=1.1,<2'
+ENTRYPOINT ["/init"]

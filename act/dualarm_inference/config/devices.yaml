@@ -1,0 +1,39 @@
+# Fill stable paths using scripts/devices.py bind. Empty paths block hardware launch.
+serial:
+  left_leader: ''
+  left_follower: ''
+  right_leader: ''
+  right_follower: ''
+cameras:
+  top:
+    model: USB U20 CAM - 720P
+    device: ''
+    width: 1280
+    height: 720
+    fps: 30.0
+    pixel_format: mjpeg2rgb
+    rotation_deg: 0
+  wrist_left:
+    model: USB U20 CAM - 720P
+    device: ''
+    width: 1280
+    height: 720
+    fps: 30.0
+    pixel_format: mjpeg2rgb
+    rotation_deg: 0
+  wrist_right:
+    model: USB U20 CAM - 720P
+    device: ''
+    width: 1280
+    height: 720
+    fps: 30.0
+    pixel_format: mjpeg2rgb
+    rotation_deg: 0
+# Visualization offsets only; measure your actual mounting before changing them.
+base_poses:
+  left:
+    xyz: [0.0, 0.25, 0.0]
+    rpy: [0.0, 0.0, 0.0]
+  right:
+    xyz: [0.0, -0.25, 0.0]
+    rpy: [0.0, 0.0, 0.0]

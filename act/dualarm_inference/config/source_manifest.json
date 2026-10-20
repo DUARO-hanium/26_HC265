@@ -1,0 +1,26 @@
+{
+  "open_manipulator": {
+    "url": "https://github.com/ROBOTIS-GIT/open_manipulator.git",
+    "commit": "d31000d90c679af9c982e73de8b12d777c5ff7dd"
+  },
+  "cyclo_intelligence": {
+    "url": "https://github.com/ROBOTIS-GIT/cyclo_intelligence.git",
+    "commit": "e648425e1f724ba61a8060369e200bd3e0f2a877",
+    "patch": "patches/cyclo_intelligence.patch",
+    "submodules": [
+      "cyclo_brain/policy/lerobot/lerobot",
+      "cyclo_brain/sdk/zenoh_ros2_sdk"
+    ]
+  },
+  "images": {
+    "control": "robotis/open-manipulator:5.1.3",
+    "cyclo": "omx-ai-bimanual/cyclo-intelligence:1.4.0-cpu",
+    "act": "omx-ai-bimanual/act:1.4.1-cpu"
+  },
+  "cpu_runtime": {
+    "derived_from": "cyclo_intelligence/docker/Dockerfile.amd64",
+    "base": "robotis/open-manipulator:5.1.3",
+    "torch": "2.7.0+cpu",
+    "torchvision": "0.22.0+cpu"
+  }
+}

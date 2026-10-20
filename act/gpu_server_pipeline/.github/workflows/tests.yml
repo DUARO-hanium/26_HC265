@@ -1,0 +1,25 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5
+        with:
+          python-version: '3.12'
+      - name: Shell syntax
+        run: bash -n scripts/*.sh server/*.sh training/scripts/*.sh
+      - name: Training script contract
+        run: bash training/tests/test_training_scripts.sh
+      - name: Conversion unit tests
+        run: |
+          python -m pip install -r conversion/requirements.txt
+          PYTHONPATH=. python -m pytest -q conversion/tests

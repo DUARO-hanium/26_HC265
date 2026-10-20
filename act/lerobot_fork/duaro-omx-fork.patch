@@ -1,0 +1,959 @@
+diff --git a/src/lerobot/cameras/opencv/camera_opencv.py b/src/lerobot/cameras/opencv/camera_opencv.py
+index 3665a90..275199a 100644
+--- a/src/lerobot/cameras/opencv/camera_opencv.py
++++ b/src/lerobot/cameras/opencv/camera_opencv.py
+@@ -168,6 +168,10 @@ class OpenCVCamera(Camera):
+                 f"Failed to open {self}.Run `lerobot-find-cameras opencv` to find available cameras."
+             )
+ 
++        # Force MJPG (compressed) to keep USB bandwidth low enough to stream over
++        # usbip/WSL2, where high-bandwidth YUYV times out with a V4L2 select() error.
++        self.videocapture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
++
+         self._configure_capture_settings()
+ 
+         if warmup:
+@@ -419,7 +423,7 @@ class OpenCVCamera(Camera):
+         self.thread = None
+         self.stop_event = None
+ 
+-    def async_read(self, timeout_ms: float = 200) -> np.ndarray:
++    def async_read(self, timeout_ms: float = 300) -> np.ndarray:
+         """
+         Reads the latest available frame asynchronously.
+ 
+@@ -447,6 +451,12 @@ class OpenCVCamera(Camera):
+             self._start_read_thread()
+ 
+         if not self.new_frame_event.wait(timeout=timeout_ms / 1000.0):
++            # The USB stream over usbip/WSL2 stalls intermittently for >1s. Rather than
++            # crashing the whole control loop when a frame is late, reuse the most recent
++            # frame if we have one (frame repeat). Only raise if no frame ever arrived.
++            with self.frame_lock:
++                if self.latest_frame is not None:
++                    return self.latest_frame
+             thread_alive = self.thread is not None and self.thread.is_alive()
+             raise TimeoutError(
+                 f"Timed out waiting for frame from camera {self} after {timeout_ms} ms. "
+diff --git a/src/lerobot/motors/dynamixel/dynamixel.py b/src/lerobot/motors/dynamixel/dynamixel.py
+index 1113ec0..f059010 100644
+--- a/src/lerobot/motors/dynamixel/dynamixel.py
++++ b/src/lerobot/motors/dynamixel/dynamixel.py
+@@ -192,6 +192,7 @@ class DynamixelMotorsBus(MotorsBus):
+ 
+     def write_calibration(self, calibration_dict: dict[str, MotorCalibration], cache: bool = True) -> None:
+         for motor, calibration in calibration_dict.items():
++            self.write("Drive_Mode", motor, calibration.drive_mode)
+             self.write("Homing_Offset", motor, calibration.homing_offset)
+             self.write("Min_Position_Limit", motor, calibration.range_min)
+             self.write("Max_Position_Limit", motor, calibration.range_max)
+diff --git a/src/lerobot/record.py b/src/lerobot/record.py
+index 09fa33f..ae0c79a 100644
+--- a/src/lerobot/record.py
++++ b/src/lerobot/record.py
+@@ -81,6 +81,7 @@ from lerobot.robots import (  # noqa: F401
+     RobotConfig,
+     bi_so100_follower,
+     hope_jr,
++    omx_follower,
+     koch_follower,
+     make_robot_from_config,
+     so100_follower,
+@@ -91,6 +92,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     TeleoperatorConfig,
+     bi_so100_leader,
+     homunculus,
++    omx_leader,
+     koch_leader,
+     make_teleoperator_from_config,
+     so100_leader,
+diff --git a/src/lerobot/replay.py b/src/lerobot/replay.py
+index 2b62fd6..ae525fa 100644
+--- a/src/lerobot/replay.py
++++ b/src/lerobot/replay.py
+@@ -53,6 +53,7 @@ from lerobot.robots import (  # noqa: F401
+     RobotConfig,
+     bi_so100_follower,
+     hope_jr,
++    omx_follower,
+     koch_follower,
+     make_robot_from_config,
+     so100_follower,
+diff --git a/src/lerobot/robots/omx_follower/__init__.py b/src/lerobot/robots/omx_follower/__init__.py
+new file mode 100644
+index 0000000..5d55f5c
+--- /dev/null
++++ b/src/lerobot/robots/omx_follower/__init__.py
+@@ -0,0 +1,18 @@
++#!/usr/bin/env python
++
++# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++from .config_omx_follower import OmxFollowerConfig
++from .omx_follower import OmxFollower 
+\ No newline at end of file
+diff --git a/src/lerobot/robots/omx_follower/calibration/omx_follower_arm.json b/src/lerobot/robots/omx_follower/calibration/omx_follower_arm.json
+new file mode 100644
+index 0000000..51322e7
+--- /dev/null
++++ b/src/lerobot/robots/omx_follower/calibration/omx_follower_arm.json
+@@ -0,0 +1,44 @@
++{
++    "shoulder_pan": {
++        "id": 11,
++        "drive_mode": 4,
++        "homing_offset": 0,
++        "range_min": 0,
++        "range_max": 4095
++    },
++    "shoulder_lift": {
++        "id": 12,
++        "drive_mode": 4,
++        "homing_offset": 0,
++        "range_min": 0,
++        "range_max": 4095
++    },
++    "elbow_flex": {
++        "id": 13,
++        "drive_mode": 4,
++        "homing_offset": 0,
++        "range_min": 0,
++        "range_max": 4095
++    },
++    "wrist_flex": {
++        "id": 14,
++        "drive_mode": 4,
++        "homing_offset": 0,
++        "range_min": 0,
++        "range_max": 4095
++    },
++    "wrist_roll": {
++        "id": 15,
++        "drive_mode": 4,
++        "homing_offset": 0,
++        "range_min": 0,
++        "range_max": 4095
++    },
++    "gripper": {
++        "id": 16,
++        "drive_mode": 4,
++        "homing_offset": 23,
++        "range_min": 0,
++        "range_max": 4095
++    }
++}
+diff --git a/src/lerobot/robots/omx_follower/config_omx_follower.py b/src/lerobot/robots/omx_follower/config_omx_follower.py
+new file mode 100644
+index 0000000..3eeecb8
+--- /dev/null
++++ b/src/lerobot/robots/omx_follower/config_omx_follower.py
+@@ -0,0 +1,39 @@
++# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++from dataclasses import dataclass, field
++
++from lerobot.cameras import CameraConfig
++
++from ..config import RobotConfig
++
++
++@RobotConfig.register_subclass("omx_follower")
++@dataclass
++class OmxFollowerConfig(RobotConfig):
++    # Port to connect to the arm
++    port: str
++
++    disable_torque_on_disconnect: bool = True
++
++    # `max_relative_target` limits the magnitude of the relative positional target vector for safety purposes.
++    # Set this to a positive scalar to have the same value for all motors, or a list that is the same length as
++    # the number of motors in your follower arms.
++    max_relative_target: int | None = None
++
++    # cameras
++    cameras: dict[str, CameraConfig] = field(default_factory=dict)
++
++    # Set to `True` for backward compatibility with previous policies/dataset
++    use_degrees: bool = False 
+\ No newline at end of file
+diff --git a/src/lerobot/robots/omx_follower/omx_follower.py b/src/lerobot/robots/omx_follower/omx_follower.py
+new file mode 100644
+index 0000000..a085a1b
+--- /dev/null
++++ b/src/lerobot/robots/omx_follower/omx_follower.py
+@@ -0,0 +1,274 @@
++#!/usr/bin/env python
++
++# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++import logging
++import time
++from functools import cached_property
++from typing import Any
++
++from lerobot.cameras.utils import make_cameras_from_configs
++from lerobot.errors import DeviceAlreadyConnectedError, DeviceNotConnectedError
++from lerobot.motors import Motor, MotorCalibration, MotorNormMode
++from lerobot.motors.dynamixel import (
++    DynamixelMotorsBus,
++    OperatingMode,
++)
++
++from ..robot import Robot
++from ..utils import ensure_safe_goal_position
++from .config_omx_follower import OmxFollowerConfig
++
++logger = logging.getLogger(__name__)
++
++
++class OmxFollower(Robot):
++    """
++    OMX Robot
++    """
++
++    config_class = OmxFollowerConfig
++    name = "omx_follower"
++
++    def __init__(self, config: OmxFollowerConfig):
++        # Set default calibration directory to source code
++        if not config.calibration_dir:
++            from pathlib import Path
++            config.calibration_dir = Path(__file__).parent / "calibration"
++
++        super().__init__(config)
++        self.config = config
++        self.bus = DynamixelMotorsBus(
++            port=self.config.port,
++            motors={
++                "shoulder_pan": Motor(11, "xl430-w250", MotorNormMode.DEGREES),
++                "shoulder_lift": Motor(12, "xl430-w250", MotorNormMode.RANGE_M100_100),
++                "elbow_flex": Motor(13, "xl430-w250", MotorNormMode.RANGE_M100_100),
++                "wrist_flex": Motor(14, "xl330-m288", MotorNormMode.RANGE_M100_100),
++                "wrist_roll": Motor(15, "xl330-m288", MotorNormMode.DEGREES),
++                "gripper": Motor(16, "xl330-m288", MotorNormMode.RANGE_0_100),
++            },
++            calibration=self.calibration,
++        )
++        self.bus.apply_drive_mode = False
++        self.cameras = make_cameras_from_configs(config.cameras)
++
++    @property
++    def _motors_ft(self) -> dict[str, type]:
++        return {f"{motor}.pos": float for motor in self.bus.motors}
++
++    @property
++    def _cameras_ft(self) -> dict[str, tuple]:
++        return {
++            cam: (self.config.cameras[cam].height, self.config.cameras[cam].width, 3) for cam in self.cameras
++        }
++
++    @cached_property
++    def observation_features(self) -> dict[str, type | tuple]:
++        return {**self._motors_ft, **self._cameras_ft}
++
++    @cached_property
++    def action_features(self) -> dict[str, type]:
++        return self._motors_ft
++
++    @property
++    def is_connected(self) -> bool:
++        return self.bus.is_connected and all(cam.is_connected for cam in self.cameras.values())
++
++    def connect(self, calibrate: bool = True) -> None:
++        """
++        We assume that at connection time, arm is in a rest position,
++        and torque can be safely disabled to run calibration.
++        """
++        if self.is_connected:
++            raise DeviceAlreadyConnectedError(f"{self} already connected")
++
++        self.bus.connect()
++        # Skip calibration and use pre-configured calibration file
++        if self.calibration:
++            logger.info(f"Using pre-configured calibration for {self}")
++            # Ensure EEPROM writes are permitted
++            self.bus.disable_torque()
++            self.bus.write_calibration(self.calibration)
++        elif not self.is_calibrated and calibrate:
++            logger.info(
++                "Mismatch between calibration values in the motor and the calibration file or no calibration file found"
++            )
++            self.calibrate()
++
++        for cam in self.cameras.values():
++            cam.connect()
++
++        self.configure()
++        logger.info(f"{self} connected.")
++
++    @property
++    def is_calibrated(self) -> bool:
++        return self.bus.is_calibrated
++
++    def calibrate(self) -> None:
++        if self.calibration:
++            # Calibration file exists, ask user whether to use it or run new calibration
++            user_input = input(
++                f"Press ENTER to use provided calibration file associated with the id {self.id}, or type 'c' and press ENTER to run calibration: "
++            )
++            if user_input.strip().lower() != "c":
++                logger.info(f"Writing calibration file associated with the id {self.id} to the motors")
++                self.bus.write_calibration(self.calibration)
++                return
++        logger.info(f"\nRunning calibration of {self}")
++        self.bus.disable_torque()
++        for motor in self.bus.motors:
++            self.bus.write("Operating_Mode", motor, OperatingMode.EXTENDED_POSITION.value)
++
++        input(f"Move {self} to the middle of its range of motion and press ENTER....")
++        homing_offsets = self.bus.set_half_turn_homings()
++
++        full_turn_motors = ["shoulder_pan", "wrist_roll"]
++        unknown_range_motors = [motor for motor in self.bus.motors if motor not in full_turn_motors]
++        print(
++            f"Move all joints except {full_turn_motors} sequentially through their entire "
++            "ranges of motion.\nRecording positions. Press ENTER to stop..."
++        )
++        range_mins, range_maxes = self.bus.record_ranges_of_motion(unknown_range_motors)
++        for motor in full_turn_motors:
++            range_mins[motor] = 0
++            range_maxes[motor] = 4095
++
++        self.calibration = {}
++        for motor, m in self.bus.motors.items():
++            # Set drive_mode=1 for elbow_flex to fix direction
++            drive_mode = 1 if motor == "elbow_flex" else 0
++            self.calibration[motor] = MotorCalibration(
++                id=m.id,
++                drive_mode=drive_mode,
++                homing_offset=homing_offsets[motor],
++                range_min=range_mins[motor],
++                range_max=range_maxes[motor],
++            )
++
++        self.bus.write_calibration(self.calibration)
++        self._save_calibration()
++        logger.info(f"Calibration saved to {self.calibration_fpath}")
++
++    def configure(self) -> None:
++        with self.bus.torque_disabled():
++            # First set operating modes per joint (EEPROM area requires torque disabled)
++            # dxl11 shoulder_pan -> 4 (EXTENDED_POSITION)
++            self.bus.write("Operating_Mode", "shoulder_pan", 4, normalize=False)
++            # dxl12 shoulder_lift -> 3 (POSITION)
++            self.bus.write("Operating_Mode", "shoulder_lift", 3, normalize=False)
++            # dxl13 elbow_flex -> 3 (POSITION)
++            self.bus.write("Operating_Mode", "elbow_flex", 3, normalize=False)
++            # dxl14 wrist_flex -> 3 (POSITION)
++            self.bus.write("Operating_Mode", "wrist_flex", 3, normalize=False)
++            # dxl15 wrist_roll -> 3 (POSITION)
++            self.bus.write("Operating_Mode", "wrist_roll", 3, normalize=False)
++            # dxl16 gripper -> 5 (CURRENT_POSITION)
++            self.bus.write("Operating_Mode", "gripper", 5, normalize=False)
++
++            # Common raw settings for all joints
++            for motor in self.bus.motors:
++                self.bus.write("Return_Delay_Time", motor, 0, normalize=False)
++                self.bus.write("Drive_Mode", motor, 4, normalize=False)
++                self.bus.write("Position_P_Gain", motor, 1000, normalize=False)
++                self.bus.write("Position_I_Gain", motor, 0, normalize=False)
++                self.bus.write("Position_D_Gain", motor, 1000, normalize=False)
++                self.bus.write("Profile_Velocity", motor, 50, normalize=False)
++                self.bus.write("Profile_Acceleration", motor, 25, normalize=False)
++
++            # Joint-specific position limits
++            self.bus.write("Min_Position_Limit", "shoulder_lift", 830, normalize=False)
++            self.bus.write("Max_Position_Limit", "shoulder_lift", 3129, normalize=False)
++
++            self.bus.write("Min_Position_Limit", "elbow_flex", 1024, normalize=False)
++            self.bus.write("Max_Position_Limit", "elbow_flex", 3140, normalize=False)
++
++            self.bus.write("Min_Position_Limit", "wrist_flex", 0, normalize=False)
++            self.bus.write("Max_Position_Limit", "wrist_flex", 4095, normalize=False)
++
++            self.bus.write("Min_Position_Limit", "wrist_roll", 0, normalize=False)
++            self.bus.write("Max_Position_Limit", "wrist_roll", 4095, normalize=False)
++
++            # Gripper current control and shutdown behavior
++            self.bus.write("Current_Limit", "gripper", 600, normalize=False)
++            self.bus.write("Goal_Current", "gripper", 600, normalize=False)
++            self.bus.write("Shutdown", "gripper", 21, normalize=False)
++
++    def setup_motors(self) -> None:
++        for motor in reversed(self.bus.motors):
++            input(f"Connect the controller board to the '{motor}' motor only and press enter.")
++            self.bus.setup_motor(motor)
++            print(f"'{motor}' motor id set to {self.bus.motors[motor].id}")
++
++    def get_observation(self) -> dict[str, Any]:
++        if not self.is_connected:
++            raise DeviceNotConnectedError(f"{self} is not connected.")
++
++        # Read arm position
++        start = time.perf_counter()
++        obs_dict = self.bus.sync_read("Present_Position")
++        obs_dict = {f"{motor}.pos": val for motor, val in obs_dict.items()}
++        dt_ms = (time.perf_counter() - start) * 1e3
++        logger.debug(f"{self} read state: {dt_ms:.1f}ms")
++
++        # Capture images from cameras
++        for cam_key, cam in self.cameras.items():
++            start = time.perf_counter()
++            obs_dict[cam_key] = cam.async_read()
++            dt_ms = (time.perf_counter() - start) * 1e3
++            logger.debug(f"{self} read {cam_key}: {dt_ms:.1f}ms")
++
++        return obs_dict
++
++    def send_action(self, action: dict[str, float]) -> dict[str, float]:
++        """Command arm to move to a target joint configuration.
++
++        The relative action magnitude may be clipped depending on the configuration parameter
++        `max_relative_target`. In this case, the action sent differs from original action.
++        Thus, this function always returns the action actually sent.
++
++        Args:
++            action (dict[str, float]): The goal positions for the motors.
++
++        Returns:
++            dict[str, float]: The action sent to the motors, potentially clipped.
++        """
++        if not self.is_connected:
++            raise DeviceNotConnectedError(f"{self} is not connected.")
++
++        goal_pos = {key.removesuffix(".pos"): val for key, val in action.items() if key.endswith(".pos")}
++
++        # Cap goal position when too far away from present position.
++        # /!\ Slower fps expected due to reading from the follower.
++        if self.config.max_relative_target is not None:
++            present_pos = self.bus.sync_read("Present_Position")
++            goal_present_pos = {key: (g_pos, present_pos[key]) for key, g_pos in goal_pos.items()}
++            goal_pos = ensure_safe_goal_position(goal_present_pos, self.config.max_relative_target)
++
++        # Send goal position to the arm
++        self.bus.sync_write("Goal_Position", goal_pos)
++
++        return {f"{motor}.pos": val for motor, val in goal_pos.items()}
++
++    def disconnect(self):
++        if not self.is_connected:
++            raise DeviceNotConnectedError(f"{self} is not connected.")
++
++        self.bus.disconnect(self.config.disable_torque_on_disconnect)
++        for cam in self.cameras.values():
++            cam.disconnect()
++
++        logger.info(f"{self} disconnected.")
+\ No newline at end of file
+diff --git a/src/lerobot/robots/utils.py b/src/lerobot/robots/utils.py
+index 7486ee4..9bf7714 100644
+--- a/src/lerobot/robots/utils.py
++++ b/src/lerobot/robots/utils.py
+@@ -61,6 +61,10 @@ def make_robot_from_config(config: RobotConfig) -> Robot:
+         from .bi_so100_follower import BiSO100Follower
+ 
+         return BiSO100Follower(config)
++    elif config.type == "omx_follower":
++        from .omx_follower import OmxFollower
++
++        return OmxFollower(config)
+     elif config.type == "mock_robot":
+         from tests.mocks.mock_robot import MockRobot
+ 
+diff --git a/src/lerobot/teleoperate.py b/src/lerobot/teleoperate.py
+index e7be696..006d0f6 100644
+--- a/src/lerobot/teleoperate.py
++++ b/src/lerobot/teleoperate.py
+@@ -52,6 +52,7 @@ lerobot-teleoperate \
+ """
+ 
+ import logging
++import csv
+ import time
+ from dataclasses import asdict, dataclass
+ from pprint import pformat
+@@ -68,6 +69,7 @@ from lerobot.robots import (  # noqa: F401
+     hope_jr,
+     koch_follower,
+     make_robot_from_config,
++    omx_follower,
+     so100_follower,
+     so101_follower,
+ )
+@@ -79,6 +81,7 @@ from lerobot.teleoperators import (  # noqa: F401
+     homunculus,
+     koch_leader,
+     make_teleoperator_from_config,
++    omx_leader,
+     so100_leader,
+     so101_leader,
+ )
+@@ -97,36 +100,62 @@ class TeleoperateConfig:
+     teleop_time_s: float | None = None
+     # Display all cameras on screen
+     display_data: bool = False
++    # Path to a CSV file to log joint values every loop (created if set)
++    log_csv: str | None = None
+ 
+ 
+ def teleop_loop(
+-    teleop: Teleoperator, robot: Robot, fps: int, display_data: bool = False, duration: float | None = None
++    teleop: Teleoperator,
++    robot: Robot,
++    fps: int,
++    display_data: bool = False,
++    duration: float | None = None,
++    log_csv: str | None = None,
+ ):
+     display_len = max(len(key) for key in robot.action_features)
+     start = time.perf_counter()
+-    while True:
+-        loop_start = time.perf_counter()
+-        action = teleop.get_action()
+-        if display_data:
+-            observation = robot.get_observation()
+-            log_rerun_data(observation, action)
+ 
+-        robot.send_action(action)
+-        dt_s = time.perf_counter() - loop_start
+-        busy_wait(1 / fps - dt_s)
++    csv_file = open(log_csv, "w", newline="") if log_csv is not None else None
++    csv_writer = csv.writer(csv_file) if csv_file is not None else None
++    header_written = False
+ 
+-        loop_s = time.perf_counter() - loop_start
+-
+-        print("\n" + "-" * (display_len + 10))
+-        print(f"{'NAME':<{display_len}} | {'NORM':>7}")
+-        for motor, value in action.items():
+-            print(f"{motor:<{display_len}} | {value:>7.2f}")
+-        print(f"\ntime: {loop_s * 1e3:.2f}ms ({1 / loop_s:.0f} Hz)")
+-
+-        if duration is not None and time.perf_counter() - start >= duration:
+-            return
+-
+-        move_cursor_up(len(action) + 5)
++    try:
++        while True:
++            loop_start = time.perf_counter()
++            action = teleop.get_action()
++            if display_data:
++                observation = robot.get_observation()
++                log_rerun_data(observation, action)
++
++            robot.send_action(action)
++
++            if csv_writer is not None:
++                if not header_written:
++                    csv_writer.writerow(["time_s"] + list(action.keys()))
++                    header_written = True
++                csv_writer.writerow(
++                    [f"{time.perf_counter() - start:.4f}"] + [f"{v:.4f}" for v in action.values()]
++                )
++                csv_file.flush()
++
++            dt_s = time.perf_counter() - loop_start
++            busy_wait(1 / fps - dt_s)
++
++            loop_s = time.perf_counter() - loop_start
++
++            print("\n" + "-" * (display_len + 10))
++            print(f"{'NAME':<{display_len}} | {'NORM':>7}")
++            for motor, value in action.items():
++                print(f"{motor:<{display_len}} | {value:>7.2f}")
++            print(f"\ntime: {loop_s * 1e3:.2f}ms ({1 / loop_s:.0f} Hz)")
++
++            if duration is not None and time.perf_counter() - start >= duration:
++                return
++
++            move_cursor_up(len(action) + 5)
++    finally:
++        if csv_file is not None:
++            csv_file.close()
+ 
+ 
+ @draccus.wrap()
+@@ -143,7 +172,14 @@ def teleoperate(cfg: TeleoperateConfig):
+     robot.connect()
+ 
+     try:
+-        teleop_loop(teleop, robot, cfg.fps, display_data=cfg.display_data, duration=cfg.teleop_time_s)
++        teleop_loop(
++            teleop,
++            robot,
++            cfg.fps,
++            display_data=cfg.display_data,
++            duration=cfg.teleop_time_s,
++            log_csv=cfg.log_csv,
++        )
+     except KeyboardInterrupt:
+         pass
+     finally:
+diff --git a/src/lerobot/teleoperators/omx_leader/__init__.py b/src/lerobot/teleoperators/omx_leader/__init__.py
+new file mode 100644
+index 0000000..15dbbd5
+--- /dev/null
++++ b/src/lerobot/teleoperators/omx_leader/__init__.py
+@@ -0,0 +1,18 @@
++#!/usr/bin/env python
++
++# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++from .config_omx_leader import OmxLeaderConfig
++from .omx_leader import OmxLeader 
+\ No newline at end of file
+diff --git a/src/lerobot/teleoperators/omx_leader/calibration/omx_leader_arm.json b/src/lerobot/teleoperators/omx_leader/calibration/omx_leader_arm.json
+new file mode 100644
+index 0000000..88e560b
+--- /dev/null
++++ b/src/lerobot/teleoperators/omx_leader/calibration/omx_leader_arm.json
+@@ -0,0 +1,44 @@
++{
++    "shoulder_pan": {
++        "id": 1,
++        "drive_mode": 0,
++        "homing_offset": 0,
++        "range_min": 0,
++        "range_max": 4095
++    },
++    "shoulder_lift": {
++        "id": 2,
++        "drive_mode": 0,
++        "homing_offset": 0,
++        "range_min": 0,
++        "range_max": 4095
++    },
++    "elbow_flex": {
++        "id": 3,
++        "drive_mode": 0,
++        "homing_offset": 0,
++        "range_min": 0,
++        "range_max": 4095
++    },
++    "wrist_flex": {
++        "id": 4,
++        "drive_mode": 0,
++        "homing_offset": 0,
++        "range_min": 0,
++        "range_max": 4095
++    },
++    "wrist_roll": {
++        "id": 5,
++        "drive_mode": 0,
++        "homing_offset": 0,
++        "range_min": 0,
++        "range_max": 4095
++    },
++    "gripper": {
++        "id": 6,
++        "drive_mode": 0,
++        "homing_offset": 0,
++        "range_min": 0,
++        "range_max": 4095
++    }
++}
+diff --git a/src/lerobot/teleoperators/omx_leader/config_omx_leader.py b/src/lerobot/teleoperators/omx_leader/config_omx_leader.py
+new file mode 100644
+index 0000000..b0c3bb9
+--- /dev/null
++++ b/src/lerobot/teleoperators/omx_leader/config_omx_leader.py
+@@ -0,0 +1,28 @@
++# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++from dataclasses import dataclass
++
++from ..config import TeleoperatorConfig
++
++
++@TeleoperatorConfig.register_subclass("omx_leader")
++@dataclass
++class OmxLeaderConfig(TeleoperatorConfig):
++    # Port to connect to the arm
++    port: str
++
++    # Sets the arm in torque mode with the gripper motor set to this value. This makes it possible to squeeze
++    # the gripper and have it spring back to an open position on its own.
++    gripper_open_pos: float = 60.0 
+\ No newline at end of file
+diff --git a/src/lerobot/teleoperators/omx_leader/omx_leader.py b/src/lerobot/teleoperators/omx_leader/omx_leader.py
+new file mode 100644
+index 0000000..28ce801
+--- /dev/null
++++ b/src/lerobot/teleoperators/omx_leader/omx_leader.py
+@@ -0,0 +1,202 @@
++#!/usr/bin/env python
++
++# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++import logging
++import time
++
++from lerobot.errors import DeviceAlreadyConnectedError, DeviceNotConnectedError
++from lerobot.motors import Motor, MotorCalibration, MotorNormMode
++from lerobot.motors.dynamixel import (
++    DriveMode,
++    DynamixelMotorsBus,
++    OperatingMode,
++)
++
++from ..teleoperator import Teleoperator
++from .config_omx_leader import OmxLeaderConfig
++
++logger = logging.getLogger(__name__)
++
++
++class OmxLeader(Teleoperator):
++    """
++    OMX Leader teleoperator based on Koch design with xl330-m288 motors
++    """
++
++    config_class = OmxLeaderConfig
++    name = "omx_leader"
++
++    def __init__(self, config: OmxLeaderConfig):
++        # Override calibration directory to use source code location
++        from pathlib import Path
++        config.calibration_dir = Path(__file__).parent / "calibration"
++
++        super().__init__(config)
++        self.config = config
++        self.bus = DynamixelMotorsBus(
++            port=self.config.port,
++            motors={
++                "shoulder_pan": Motor(1, "xl330-m288", MotorNormMode.DEGREES),
++                "shoulder_lift": Motor(2, "xl330-m288", MotorNormMode.RANGE_M100_100),
++                "elbow_flex": Motor(3, "xl330-m288", MotorNormMode.RANGE_M100_100),
++                "wrist_flex": Motor(4, "xl330-m288", MotorNormMode.RANGE_M100_100),
++                "wrist_roll": Motor(5, "xl330-m288", MotorNormMode.DEGREES),
++                "gripper": Motor(6, "xl330-m077", MotorNormMode.RANGE_0_100),
++            },
++            calibration=self.calibration,
++        )
++        self.bus.apply_drive_mode = False
++
++    @property
++    def action_features(self) -> dict[str, type]:
++        return {f"{motor}.pos": float for motor in self.bus.motors}
++
++    @property
++    def feedback_features(self) -> dict[str, type]:
++        return {}
++
++    @property
++    def is_connected(self) -> bool:
++        return self.bus.is_connected
++
++    def connect(self, calibrate: bool = True) -> None:
++        if self.is_connected:
++            raise DeviceAlreadyConnectedError(f"{self} already connected")
++
++        self.bus.connect()
++        # Skip calibration and use pre-configured calibration file
++        if self.calibration:
++            logger.info(f"Using pre-configured calibration for {self}")
++            # Ensure EEPROM writes are permitted
++            self.bus.disable_torque()
++            # Enforce gripper inversion via calibration so normalization flips correctly
++            if "gripper" in self.calibration:
++                self.calibration["gripper"].drive_mode = 1
++            self.bus.write_calibration(self.calibration)
++        elif not self.is_calibrated and calibrate:
++            logger.info(
++                "Mismatch between calibration values in the motor and the calibration file or no calibration file found"
++            )
++            self.calibrate()
++
++        self.configure()
++        logger.info(f"{self} connected.")
++
++    @property
++    def is_calibrated(self) -> bool:
++        return self.bus.is_calibrated
++
++    def calibrate(self) -> None:
++        if self.calibration:
++            # Calibration file exists, ask user whether to use it or run new calibration
++            user_input = input(
++                f"Press ENTER to use provided calibration file associated with the id {self.id}, or type 'c' and press ENTER to run calibration: "
++            )
++            if user_input.strip().lower() != "c":
++                logger.info(f"Writing calibration file associated with the id {self.id} to the motors")
++                self.bus.write_calibration(self.calibration)
++                return
++        logger.info(f"\nRunning calibration of {self}")
++        self.bus.disable_torque()
++        for motor in self.bus.motors:
++            self.bus.write("Operating_Mode", motor, OperatingMode.EXTENDED_POSITION.value)
++
++        # All motors have same direction for OMX except gripper (invert)
++        drive_modes = {motor: (1 if motor == "gripper" else 0) for motor in self.bus.motors}
++
++        input(f"Move {self} to the middle of its range of motion and press ENTER....")
++        homing_offsets = self.bus.set_half_turn_homings()
++
++        full_turn_motors = ["shoulder_pan", "wrist_roll"]
++        unknown_range_motors = [motor for motor in self.bus.motors if motor not in full_turn_motors]
++        print(
++            f"Move all joints except {full_turn_motors} sequentially through their "
++            "entire ranges of motion.\nRecording positions. Press ENTER to stop..."
++        )
++        range_mins, range_maxes = self.bus.record_ranges_of_motion(unknown_range_motors)
++        for motor in full_turn_motors:
++            range_mins[motor] = 0
++            range_maxes[motor] = 4095
++
++        self.calibration = {}
++        for motor, m in self.bus.motors.items():
++            self.calibration[motor] = MotorCalibration(
++                id=m.id,
++                drive_mode=drive_modes[motor],
++                homing_offset=homing_offsets[motor],
++                range_min=range_mins[motor],
++                range_max=range_maxes[motor],
++            )
++
++        self.bus.write_calibration(self.calibration)
++        self._save_calibration()
++        logger.info(f"Calibration saved to {self.calibration_fpath}")
++
++    def configure(self) -> None:
++        self.bus.disable_torque()
++        # 1) Set operating modes first (EEPROM writes require torque disabled)
++        for motor in ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]:
++            self.bus.write("Operating_Mode", motor, OperatingMode.CURRENT.value, normalize=False)
++        self.bus.write("Operating_Mode", "gripper", OperatingMode.CURRENT_POSITION.value, normalize=False)
++
++        # 2) Common per-joint settings
++        for motor in self.bus.motors:
++            self.bus.write("Return_Delay_Time", motor, 0, normalize=False)
++
++        # 3) Drive modes and torque
++        for motor in ["shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll"]:
++            self.bus.write("Drive_Mode", motor, 0, normalize=False)
++            self.bus.write("Torque_Enable", motor, 0, normalize=False)
++
++        # dxl6 (gripper): Drive_Mode=1, gains and current limit
++        self.bus.write("Drive_Mode", "gripper", 1, normalize=False)
++        self.bus.write("Position_P_Gain", "gripper", 1000, normalize=False)
++        self.bus.write("Position_D_Gain", "gripper", 1500, normalize=False)
++        self.bus.write("Current_Limit", "gripper", 300, normalize=False)
++
++        # Keep gripper torque enabled for physical trigger behavior
++        self.bus.enable_torque("gripper")
++        if self.is_calibrated:
++            self.bus.write("Goal_Position", "gripper", self.config.gripper_open_pos)
++
++    def setup_motors(self) -> None:
++        for motor in reversed(self.bus.motors):
++            input(f"Connect the controller board to the '{motor}' motor only and press enter.")
++            self.bus.setup_motor(motor)
++            print(f"'{motor}' motor id set to {self.bus.motors[motor].id}")
++
++    def get_action(self) -> dict[str, float]:
++        if not self.is_connected:
++            raise DeviceNotConnectedError(f"{self} is not connected.")
++
++        start = time.perf_counter()
++        action = self.bus.sync_read("Present_Position")
++        action = {f"{motor}.pos": val for motor, val in action.items()}
++        dt_ms = (time.perf_counter() - start) * 1e3
++        logger.debug(f"{self} read action: {dt_ms:.1f}ms")
++
++        return action
++
++    def send_feedback(self, feedback: dict[str, float]) -> None:
++        # TODO(rcadene, aliberts): Implement force feedback
++        raise NotImplementedError
++
++    def disconnect(self) -> None:
++        if not self.is_connected:
++            raise DeviceNotConnectedError(f"{self} is not connected.")
++
++        self.bus.disconnect()
++        logger.info(f"{self} disconnected.")
+diff --git a/src/lerobot/teleoperators/utils.py b/src/lerobot/teleoperators/utils.py
+index 344a95d..ae4f5a6 100644
+--- a/src/lerobot/teleoperators/utils.py
++++ b/src/lerobot/teleoperators/utils.py
+@@ -65,5 +65,9 @@ def make_teleoperator_from_config(config: TeleoperatorConfig) -> Teleoperator:
+         from .bi_so100_leader import BiSO100Leader
+ 
+         return BiSO100Leader(config)
++    elif config.type == "omx_leader":
++        from .omx_leader import OmxLeader
++
++        return OmxLeader(config)
+     else:
+         raise ValueError(config.type)
