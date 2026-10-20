@@ -1,0 +1,3 @@
+# Official LeRobot training extra supplies the matching dataset, Accelerate and
+# Weights & Biases dependencies. Keep this pin aligned with the runtime code.
+lerobot[training]==0.6.0

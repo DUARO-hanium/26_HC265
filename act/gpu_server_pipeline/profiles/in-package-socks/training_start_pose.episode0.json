@@ -1,0 +1,26 @@
+{
+  "positions": {
+    "joint1": -0.08897088468074799,
+    "joint2": -1.8683886528015137,
+    "joint3": 1.6751070022583008,
+    "joint4": 1.633689522743225,
+    "joint5": 1.3621749877929688,
+    "gripper_joint_1": 0.699495255947113
+  },
+  "trajectory_duration_s": 12,
+  "provenance": {
+    "dataset": "HYHero/in_package_socks_0805",
+    "dataset_revision": "3b301a15253dbdc01c80f6c08a6e30dac93cceca",
+    "episode_index": 0,
+    "frame_index": 0,
+    "field": "action",
+    "joint_order": [
+      "joint1",
+      "joint2",
+      "joint3",
+      "joint4",
+      "joint5",
+      "gripper_joint_1"
+    ]
+  }
+}

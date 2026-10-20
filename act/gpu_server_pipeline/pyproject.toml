@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=71"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lerobot-robot-ros2-omx"
+version = "0.1.0"
+description = "LeRobot 0.6 ACT training and remote ROS 2 inference for ROBOTIS OpenManipulator-X"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.12"
+authors = [{name = "YWhero"}]
+dependencies = [
+  "lerobot[async]==0.6.0",
+  "numpy>=2.0",
+  "opencv-python-headless>=4.9",
+  "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+conversion = [
+  "lerobot[dataset]==0.6.0",
+  "mcap-ros2-support>=0.5",
+  "pandas>=2.2",
+  "pyarrow>=16",
+  "Pillow>=10",
+]
+
+[project.urls]
+Repository = "https://github.com/DUARO-hanium/lerobot-ACT-train-inference-GPUserver"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "conversion/tests"]

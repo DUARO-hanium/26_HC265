@@ -1,0 +1,21 @@
+services:
+  open_manipulator:
+    container_name: omx_ai_bimanual_control
+    restart: unless-stopped
+    environment:
+      ROS_DOMAIN_ID: '74'
+      RMW_IMPLEMENTATION: rmw_zenoh_cpp
+      ZENOH_CONFIG_OVERRIDE: 'mode="client";connect/endpoints=["tcp/127.0.0.1:7449"];scouting/multicast/enabled=false;transport/shared_memory/enabled=true'
+    volumes:
+      - ${OMX_WS}:/omx_ws
+      - ${OMX_WS}/runtime/control-agent:/var/run/agent
+  zenoh:
+    image: robotis/open-manipulator:5.1.3
+    container_name: omx_ai_bimanual_zenoh
+    entrypoint: [bash, --noprofile, --norc, -c]
+    command: ['source /opt/ros/jazzy/setup.bash && exec ros2 run rmw_zenoh_cpp rmw_zenohd']
+    network_mode: host
+    ipc: host
+    environment:
+      ZENOH_CONFIG_OVERRIDE: 'listen/endpoints=["tcp/127.0.0.1:7449"];scouting/multicast/enabled=false'
+    restart: unless-stopped

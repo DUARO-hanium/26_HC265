@@ -1,0 +1,19 @@
+{
+  "positions": {
+    "joint1": -0.08897088468074799,
+    "joint2": -1.863786657281054,
+    "joint3": 1.6705050780074633,
+    "joint4": 1.633689522743225,
+    "joint5": 1.3621749877929688,
+    "gripper_joint_1": 0.699495255947113
+  },
+  "trajectory_duration_s": 12,
+  "provenance": {
+    "base_pose": "training_start_pose.episode0.json",
+    "purpose": "first supervised real-hardware commissioning",
+    "encoder_tick_rad": 0.0015339807878856412,
+    "joint2_derivation": "verified raw lower limit plus 3 encoder ticks",
+    "joint3_derivation": "verified raw upper limit minus 3 encoder ticks",
+    "other_joints": "unchanged from recorded episode-0 action"
+  }
+}

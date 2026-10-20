@@ -1,0 +1,49 @@
+diff --git a/cyclo_brain/policy/lerobot/lerobot_engine/io_mapping.py b/cyclo_brain/policy/lerobot/lerobot_engine/io_mapping.py
+index 6bd1aa3..e6f0d5e 100644
+--- a/cyclo_brain/policy/lerobot/lerobot_engine/io_mapping.py
++++ b/cyclo_brain/policy/lerobot/lerobot_engine/io_mapping.py
+@@ -46,6 +46,14 @@ class IoMappingMixin:
+     def _init_robot(self, robot_type: str) -> None:
+         """Create RobotClient + resolve camera / state mappings."""
+         self._robot = RobotClient(robot_type)
++        if robot_type in ("omx_ai_left", "omx_ai_right"):
++            state = self._policy.config.input_features.get("observation.state")
++            action = self._policy.config.output_features.get("action")
++            images = set(self._policy_image_keys())
++            if (state is None or tuple(state.shape) != (6,) or action is None
++                    or tuple(action.shape) != (6,) or images != {
++                        "observation.images.top", "observation.images.wrist"}):
++                raise ValueError("Single-arm OMX ACT requires 6 state/action joints and top/wrist images")
+ 
+         # Cameras: only those that match a policy input key
+         # ``observation.images.<cam>``. Cameras advertised by the robot
+diff --git a/cyclo_brain/policy/lerobot/lerobot_engine/loading.py b/cyclo_brain/policy/lerobot/lerobot_engine/loading.py
+index 9ea172d..9984f52 100644
+--- a/cyclo_brain/policy/lerobot/lerobot_engine/loading.py
++++ b/cyclo_brain/policy/lerobot/lerobot_engine/loading.py
+@@ -84,7 +84,9 @@ class LoadingMixin:
+             policy_config.device = "cpu"
+             policy = PolicyClass.from_pretrained(model_path, config=policy_config)
+         else:
+-            policy = PolicyClass.from_pretrained(model_path)
++            policy_config = PreTrainedConfig.from_pretrained(model_path)
++            policy_config.device = str(device)
++            policy = PolicyClass.from_pretrained(model_path, config=policy_config)
+ 
+         # MolmoAct2 errors out unless the action mode is set. We run the
+         # continuous (flow matching) head; a checkpoint that names one keeps it.
+diff --git a/docker/supervisor_api/app.py b/docker/supervisor_api/app.py
+index f533fc3..f796010 100644
+--- a/docker/supervisor_api/app.py
++++ b/docker/supervisor_api/app.py
+@@ -327,8 +327,8 @@ _BACKEND_ARCH = os.environ.get("ARCH", _detect_arch())
+ _BACKENDS: Dict[str, Dict[str, str]] = {
+     "lerobot": {
+         "service": "lerobot",
+-        "container": "lerobot_server",
+-        "image": f"robotis/lerobot-zenoh:1.4.1-{_BACKEND_ARCH}",
++        "container": os.environ.get("CYCLO_LEROBOT_CONTAINER", "lerobot_server"),
++        "image": os.environ.get("CYCLO_LEROBOT_IMAGE", f"robotis/lerobot-zenoh:1.4.1-{_BACKEND_ARCH}"),
+         "services": ["main-runtime", "engine-process"],
+     },
+     "groot": {
